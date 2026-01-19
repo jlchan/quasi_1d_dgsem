@@ -74,8 +74,8 @@ end
 LxF_dissipation = DissipationLocalLaxFriedrichs()
 
 function LxF_penalty(u_l, u_r, equations::CompressibleEulerEquations1D)
-    val = -LxF_dissipation(u_l, u_r, 1, equations) # this is -lambda / 2 * (u_r - u_l)
-    return SVector(val[1], val[2], val[3], 0)
+    lambda = max_abs_speed(A2cons(u_l, equations), A2cons(u_r, equations), 1, equations)
+    return lambda / 2 * (u_r - u_l) #SVector(val[1], val[2], val[3], 0)
 end
 
 function rhs!(du_voa, u_voa, parameters, t)
@@ -135,7 +135,7 @@ println("Computing the ODE solution...")
 tspan = (0, 5.0)
 ode = ODEProblem(rhs!, VectorOfArray(u), tspan, params)
 sol = solve(ode, RDPK3SpFSAL49(), saveat=LinRange(tspan..., 100), 
-            abstol=1e-8, reltol=1e-7, 
+            abstol=1e-9, reltol=1e-7, 
             callback=AliveCallback(alive_interval=100))
 
 @gif for i in eachindex(sol.u)
