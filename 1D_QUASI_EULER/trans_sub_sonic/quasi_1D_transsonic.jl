@@ -1,10 +1,12 @@
 using LinearAlgebra, SparseArrays
+using MAT
 using StaticArrays 
 using StartUpDG
 using Plots
-using OrdinaryDiffEq
+using OrdinaryDiffEqLowStorageRK
+using RecursiveArrayTools
 using Trixi: AliveCallback, pressure, cons2prim, prim2cons, cons2entropy, ln_mean, inv_ln_mean, CompressibleEulerEquations1D, DissipationLocalLaxFriedrichs
-using MAT
+
 function a(x)
     x = abs(x)
     if (0.0 <= x <= 5.0)
@@ -76,9 +78,11 @@ function LxF_penalty(u_l, u_r, equations::CompressibleEulerEquations1D)
     return SVector(val[1], val[2], val[3], 0)
 end
 
-function rhs!(du::Matrix{<:SVector}, u, parameters, t)
+function rhs!(du_voa, u_voa, parameters, t)
     (; rd, md, D_skew, equations) = parameters
     (; nxJ, J) = md
+
+    du, u = parent(du_voa), parent(u_voa)
 
     fill!(du, zero(eltype(du)))
     uf = u[rd.Fmask, :]
@@ -129,12 +133,13 @@ w = map(x -> SVector{4}(x..., 0.0), cons2entropy.(A2cons.(u, equations), equatio
 
 println("Computing the ODE solution...")
 tspan = (0, 5.0)
-ode = ODEProblem(rhs!, u, tspan, params)
-sol = solve(ode,  RDPK3SpFSAL49(), saveat=LinRange(tspan..., 100), 
-            abstol=1e-10, reltol=1e-10, callback=AliveCallback(alive_interval=100))
+ode = ODEProblem(rhs!, VectorOfArray(u), tspan, params)
+sol = solve(ode, RDPK3SpFSAL49(), saveat=LinRange(tspan..., 100), 
+            abstol=1e-8, reltol=1e-7, 
+            callback=AliveCallback(alive_interval=100))
 
 @gif for i in eachindex(sol.u)
-    u = sol.u[i]
+    u = parent(sol.u[i])
     rhoA = getindex.(u, 1)
     rhouA = getindex.(u, 2)
     A = getindex.(u, 4)
@@ -149,14 +154,14 @@ sol = solve(ode,  RDPK3SpFSAL49(), saveat=LinRange(tspan..., 100),
     title!("Time t=$(sol.t[i])")
 end
 
-u = sol.u[end]
+u = parent(sol.u[end])
 p = pressure.(A2cons.(u, equations), equations)
 x_p = rd.Vp * md.x
 p_p = rd.Vp * p
 
 
 
-u = sol.u[end]
+u = parent(sol.u[end])
 rhoA = getindex.(u, 1)
 rhouA = getindex.(u, 2)
 A = getindex.(u, 4)
@@ -169,7 +174,7 @@ Ma = rd.Vp * Ma
 plot(rd.Vp * md.x, rd.Vp * p, leg=false)
 title!("Time t=$(sol.t[end])")
 
-matwrite("trans_subsonic.mat", Dict( "x" => x_p, "pressure" => p_p, "Ma" => Ma); compress = true)
+# matwrite("trans_subsonic.mat", Dict( "x" => x_p, "pressure" => p_p, "Ma" => Ma); compress = true)
 
 
 
